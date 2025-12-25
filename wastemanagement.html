@@ -1,0 +1,2061 @@
+<!doctype html>
+<html lang="en" class="h-full">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Waste Management Awareness</title>
+  <script src="/_sdk/element_sdk.js"></script>
+  <script src="/_sdk/data_sdk.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    body {
+      box-sizing: border-box;
+    }
+    
+    .category-card {
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .category-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 16px rgba(0,0,0,0.15);
+    }
+    
+    .waste-item {
+      transition: background-color 0.2s;
+    }
+    
+    .waste-item:hover {
+      opacity: 0.9;
+    }
+
+    #map {
+      height: 500px;
+      width: 100%;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .center-card {
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+
+    .center-card:hover {
+      transform: translateX(4px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .center-card.active {
+      border: 2px solid;
+      transform: translateX(4px);
+    }
+
+    .gm-style-iw {
+      border-radius: 8px;
+    }
+
+    .reward-badge {
+      transition: transform 0.3s;
+    }
+
+    .reward-badge:hover {
+      transform: scale(1.1);
+    }
+
+    .progress-bar {
+      transition: width 0.5s ease-in-out;
+    }
+
+    @keyframes pointsAnimation {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.2); }
+      100% { transform: scale(1); }
+    }
+
+    .points-animate {
+      animation: pointsAnimation 0.5s;
+    }
+
+    #qr-reader {
+      border-radius: 12px;
+      overflow: hidden;
+      max-width: 100%;
+    }
+
+    #qr-reader video {
+      border-radius: 12px;
+    }
+  </style>
+  <style>@view-transition { navigation: auto; }</style>
+ </head>
+ <body class="h-full overflow-auto">
+  <div id="app" class="w-full min-h-full"></div>
+  <script>
+    const defaultConfig = {
+      background_color: "#f0f9ff",
+      surface_color: "#ffffff",
+      text_color: "#1e293b",
+      primary_action: "#10b981",
+      secondary_action: "#3b82f6",
+      font_family: "system-ui",
+      font_size: 16,
+      app_title: "Waste Management Awareness",
+      tagline: "Learn to segregate waste properly and find recycling centers near you",
+      learn_heading: "Learn Waste Segregation",
+      map_heading: "Find Recycling Centers on Google Maps",
+      rewards_heading: "Earn Eco Rewards",
+      admin_password: "admin123"
+    };
+
+    let isAdminMode = false;
+    let currentUserName = "";
+    let currentUserEmail = "";
+    let registeredUsers = [];
+    let html5QrCode = null;
+    let isScanning = false;
+
+    const wasteCategories = [
+      {
+        id: 'biodegradable',
+        name: '🌱 Biodegradable',
+        color: '#10b981',
+        description: 'Organic waste that decomposes naturally',
+        items: ['Food scraps', 'Vegetable peels', 'Fruit waste', 'Tea bags', 'Coffee grounds', 'Garden waste', 'Paper products']
+      },
+      {
+        id: 'recyclable',
+        name: '♻️ Recyclable',
+        color: '#3b82f6',
+        description: 'Materials that can be processed and reused',
+        items: ['Plastic bottles', 'Glass containers', 'Metal cans', 'Cardboard boxes', 'Newspapers', 'Magazines', 'Clean paper']
+      },
+      {
+        id: 'hazardous',
+        name: '⚠️ Hazardous',
+        color: '#ef4444',
+        description: 'Dangerous waste requiring special disposal',
+        items: ['Batteries', 'Electronics', 'Paint cans', 'Chemicals', 'Medical waste', 'Light bulbs', 'Pesticides']
+      },
+      {
+        id: 'general',
+        name: '🗑️ General Waste',
+        color: '#64748b',
+        description: 'Non-recyclable and non-hazardous waste',
+        items: ['Plastic wrappers', 'Styrofoam', 'Broken ceramics', 'Used tissues', 'Diapers', 'Contaminated paper']
+      }
+    ];
+
+    const baseRecyclingCenters = [
+      {
+        id: 1,
+        name: 'Saahas Zero Waste - Delhi',
+        lat: 28.5355,
+        lng: 77.3910,
+        accepts: ['Plastic', 'Glass', 'Metal', 'Paper', 'E-Waste'],
+        hours: 'Mon-Sat: 9AM-6PM',
+        phone: '+91 80 4715 9999',
+        address: 'Noida Sector 62, Delhi NCR',
+        color: '#10b981',
+        qrCode: 'RECYCLE_CENTER_1'
+      },
+      {
+        id: 2,
+        name: 'Kabadiwalla Connect - Mumbai',
+        lat: 19.0760,
+        lng: 72.8777,
+        accepts: ['Paper', 'Plastic', 'Metal', 'Glass'],
+        hours: 'Mon-Sat: 10AM-7PM',
+        phone: '+91 95135 77322',
+        address: 'Bandra West, Mumbai, Maharashtra',
+        color: '#3b82f6',
+        qrCode: 'RECYCLE_CENTER_2'
+      },
+      {
+        id: 3,
+        name: 'HasHiru - Bangalore',
+        lat: 12.9716,
+        lng: 77.5946,
+        accepts: ['Organic', 'Garden Waste', 'Dry Waste'],
+        hours: 'Daily: 8AM-8PM',
+        phone: '+91 80 2573 4466',
+        address: 'Koramangala, Bangalore, Karnataka',
+        color: '#10b981',
+        qrCode: 'RECYCLE_CENTER_3'
+      },
+      {
+        id: 4,
+        name: 'Namo E-Waste - Chennai',
+        lat: 13.0827,
+        lng: 80.2707,
+        accepts: ['Electronics', 'Batteries', 'Computers'],
+        hours: 'Mon-Sat: 9AM-6PM',
+        phone: '+91 44 4201 5555',
+        address: 'T Nagar, Chennai, Tamil Nadu',
+        color: '#ef4444',
+        qrCode: 'RECYCLE_CENTER_4'
+      },
+      {
+        id: 5,
+        name: 'E-Waste Recyclers India - Kolkata',
+        lat: 22.5726,
+        lng: 88.3639,
+        accepts: ['Electronics', 'E-Waste', 'Batteries'],
+        hours: 'Mon-Sat: 10AM-6PM',
+        phone: '+91 33 4003 3773',
+        address: 'Park Street, Kolkata, West Bengal',
+        color: '#ef4444',
+        qrCode: 'RECYCLE_CENTER_5'
+      },
+      {
+        id: 6,
+        name: 'Ramky Enviro Engineers - Hyderabad',
+        lat: 17.3850,
+        lng: 78.4867,
+        accepts: ['Plastic', 'Glass', 'Metal', 'Hazardous'],
+        hours: 'Mon-Fri: 9AM-5PM',
+        phone: '+91 40 2343 5487',
+        address: 'Hitech City, Hyderabad, Telangana',
+        color: '#3b82f6',
+        qrCode: 'RECYCLE_CENTER_6'
+      },
+      {
+        id: 7,
+        name: 'SWaCH Cooperative - Pune',
+        lat: 18.5204,
+        lng: 73.8567,
+        accepts: ['Plastic', 'Glass', 'Metal', 'Paper', 'Cardboard'],
+        hours: 'Daily: 8AM-7PM',
+        phone: '+91 20 2528 5005',
+        address: 'Koregaon Park, Pune, Maharashtra',
+        color: '#10b981',
+        qrCode: 'RECYCLE_CENTER_7'
+      },
+      {
+        id: 8,
+        name: 'Green O Tech India - Ahmedabad',
+        lat: 23.0225,
+        lng: 72.5714,
+        accepts: ['E-Waste', 'Electronics', 'Batteries'],
+        hours: 'Mon-Sat: 9AM-6PM',
+        phone: '+91 79 4004 6633',
+        address: 'Satellite, Ahmedabad, Gujarat',
+        color: '#ef4444',
+        qrCode: 'RECYCLE_CENTER_8'
+      },
+      {
+        id: 9,
+        name: 'Chintan Environmental - Jaipur',
+        lat: 26.9124,
+        lng: 75.7873,
+        accepts: ['Plastic', 'Paper', 'Metal'],
+        hours: 'Mon-Sat: 10AM-6PM',
+        phone: '+91 11 4182 6890',
+        address: 'C-Scheme, Jaipur, Rajasthan',
+        color: '#3b82f6',
+        qrCode: 'RECYCLE_CENTER_9'
+      },
+      {
+        id: 10,
+        name: 'Eco Wise Waste Management - Indore',
+        lat: 22.7196,
+        lng: 75.8577,
+        accepts: ['Plastic', 'Glass', 'Metal', 'Paper'],
+        hours: 'Mon-Sat: 9AM-7PM',
+        phone: '+91 731 404 2222',
+        address: 'Vijay Nagar, Indore, Madhya Pradesh',
+        color: '#10b981',
+        qrCode: 'RECYCLE_CENTER_10'
+      },
+      {
+        id: 11,
+        name: 'Attero Recycling - Noida',
+        lat: 28.5355,
+        lng: 77.3910,
+        accepts: ['E-Waste', 'Electronics', 'Batteries', 'Solar Panels'],
+        hours: 'Mon-Fri: 9AM-5PM',
+        phone: '+91 120 433 6871',
+        address: 'Sector 135, Noida, Uttar Pradesh',
+        color: '#ef4444',
+        qrCode: 'RECYCLE_CENTER_11'
+      },
+      {
+        id: 12,
+        name: 'Recykal - Hyderabad',
+        lat: 17.4485,
+        lng: 78.3908,
+        accepts: ['Plastic', 'Glass', 'Metal', 'Paper'],
+        hours: 'Mon-Sat: 9AM-6PM',
+        phone: '+91 40 6815 5678',
+        address: 'Gachibowli, Hyderabad, Telangana',
+        color: '#3b82f6',
+        qrCode: 'RECYCLE_CENTER_12'
+      }
+    ];
+
+    let recyclingCenters = [...baseRecyclingCenters];
+
+    const rewardActions = [
+      { id: 'visit_center', name: 'Visit Recycling Center', points: 50, icon: '🏢', requiresScan: true },
+      { id: 'recycle_plastic', name: 'Recycle Plastic', points: 20, icon: '♻️', requiresScan: false },
+      { id: 'recycle_ewaste', name: 'Recycle E-Waste', points: 30, icon: '📱', requiresScan: false },
+      { id: 'compost', name: 'Compost Organic Waste', points: 25, icon: '🌱', requiresScan: false },
+      { id: 'learn_category', name: 'Learn Waste Category', points: 10, icon: '📚', requiresScan: false },
+      { id: 'share_app', name: 'Share with Friends', points: 15, icon: '🔗', requiresScan: false }
+    ];
+
+    const badges = [
+      { name: 'Eco Beginner', minPoints: 0, icon: '🌱', color: '#10b981' },
+      { name: 'Green Warrior', minPoints: 100, icon: '🏆', color: '#3b82f6' },
+      { name: 'Eco Champion', minPoints: 300, icon: '⭐', color: '#f59e0b' },
+      { name: 'Planet Savior', minPoints: 500, icon: '🌍', color: '#8b5cf6' }
+    ];
+
+    let userLocation = null;
+    let map = null;
+    let markers = [];
+    let selectedCenterId = null;
+    let infoWindows = [];
+    let allData = [];
+    let rewardData = [];
+    let centerSubmissions = [];
+    let totalPoints = 0;
+    let isLoading = false;
+
+    function showSuggestCenterForm() {
+      if (!currentUserName) {
+        showAuthChoice(() => showSuggestCenterForm());
+        return;
+      }
+
+      const config = window.elementSdk ? window.elementSdk.config : defaultConfig;
+      const baseSize = config.font_size || defaultConfig.font_size;
+      const surfaceColor = config.surface_color || defaultConfig.surface_color;
+      const textColor = config.text_color || defaultConfig.text_color;
+      const primaryAction = config.primary_action || defaultConfig.primary_action;
+      const backgroundColor = config.background_color || defaultConfig.background_color;
+
+      const overlay = document.createElement('div');
+      overlay.id = 'suggest-center-overlay';
+      overlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        padding: ${baseSize}px;
+        box-sizing: border-box;
+        overflow-y: auto;
+      `;
+
+      overlay.innerHTML = `
+        <div style="background: ${surfaceColor}; border-radius: ${baseSize * 0.75}px; padding: ${baseSize * 2}px; max-width: 500px; width: 100%; box-shadow: 0 8px 32px rgba(0,0,0,0.3); margin: ${baseSize * 2}px auto;">
+          <h2 style="font-size: ${baseSize * 1.5}px; font-weight: 600; color: ${textColor}; margin-bottom: ${baseSize * 0.5}px; text-align: center;">📍 Suggest Recycling Center</h2>
+          <p style="font-size: ${baseSize * 0.875}px; color: ${textColor}; opacity: 0.7; margin-bottom: ${baseSize * 1.5}px; text-align: center;">Submit a new location for admin approval</p>
+          
+          <form id="suggest-center-form">
+            <label for="center-name" style="display: block; font-size: ${baseSize * 0.875}px; color: ${textColor}; margin-bottom: ${baseSize * 0.5}px; font-weight: 500;">Center Name *</label>
+            <input type="text" id="center-name" required style="width: 100%; padding: ${baseSize * 0.75}px; border: 2px solid ${backgroundColor}; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize}px; margin-bottom: ${baseSize}px; box-sizing: border-box;" placeholder="Enter center name" />
+            
+            <label for="center-address" style="display: block; font-size: ${baseSize * 0.875}px; color: ${textColor}; margin-bottom: ${baseSize * 0.5}px; font-weight: 500;">Address *</label>
+            <textarea id="center-address" required rows="2" style="width: 100%; padding: ${baseSize * 0.75}px; border: 2px solid ${backgroundColor}; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize}px; margin-bottom: ${baseSize}px; box-sizing: border-box; resize: vertical;" placeholder="Enter full address"></textarea>
+            
+            <label for="center-phone" style="display: block; font-size: ${baseSize * 0.875}px; color: ${textColor}; margin-bottom: ${baseSize * 0.5}px; font-weight: 500;">Phone Number *</label>
+            <input type="tel" id="center-phone" required style="width: 100%; padding: ${baseSize * 0.75}px; border: 2px solid ${backgroundColor}; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize}px; margin-bottom: ${baseSize}px; box-sizing: border-box;" placeholder="+91 XXXXX XXXXX" />
+            
+            <label for="center-hours" style="display: block; font-size: ${baseSize * 0.875}px; color: ${textColor}; margin-bottom: ${baseSize * 0.5}px; font-weight: 500;">Operating Hours *</label>
+            <input type="text" id="center-hours" required style="width: 100%; padding: ${baseSize * 0.75}px; border: 2px solid ${backgroundColor}; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize}px; margin-bottom: ${baseSize}px; box-sizing: border-box;" placeholder="e.g., Mon-Sat: 9AM-6PM" />
+            
+            <label for="center-accepts" style="display: block; font-size: ${baseSize * 0.875}px; color: ${textColor}; margin-bottom: ${baseSize * 0.5}px; font-weight: 500;">Accepted Materials (comma separated) *</label>
+            <input type="text" id="center-accepts" required style="width: 100%; padding: ${baseSize * 0.75}px; border: 2px solid ${backgroundColor}; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize}px; margin-bottom: ${baseSize}px; box-sizing: border-box;" placeholder="e.g., Plastic, Glass, Metal, Paper" />
+            
+            <label for="center-lat" style="display: block; font-size: ${baseSize * 0.875}px; color: ${textColor}; margin-bottom: ${baseSize * 0.5}px; font-weight: 500;">Latitude *</label>
+            <input type="number" id="center-lat" step="any" required style="width: 100%; padding: ${baseSize * 0.75}px; border: 2px solid ${backgroundColor}; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize}px; margin-bottom: ${baseSize}px; box-sizing: border-box;" placeholder="e.g., 28.5355" />
+            
+            <label for="center-lng" style="display: block; font-size: ${baseSize * 0.875}px; color: ${textColor}; margin-bottom: ${baseSize * 0.5}px; font-weight: 500;">Longitude *</label>
+            <input type="number" id="center-lng" step="any" required style="width: 100%; padding: ${baseSize * 0.75}px; border: 2px solid ${backgroundColor}; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize}px; margin-bottom: ${baseSize * 1.5}px; box-sizing: border-box;" placeholder="e.g., 77.3910" />
+            
+            <div id="suggest-error" style="color: #ef4444; font-size: ${baseSize * 0.875}px; margin-bottom: ${baseSize}px; display: none;"></div>
+            
+            <div style="display: flex; gap: ${baseSize}px;">
+              <button type="button" onclick="closeSuggestCenter()" style="flex: 1; background: ${backgroundColor}; color: ${textColor}; border: none; padding: ${baseSize * 0.75}px; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize}px; font-weight: 500; cursor: pointer;">Cancel</button>
+              <button type="submit" id="suggest-submit-btn" style="flex: 2; background: ${primaryAction}; color: white; border: none; padding: ${baseSize * 0.75}px; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize}px; font-weight: 500; cursor: pointer;">Submit for Review</button>
+            </div>
+          </form>
+        </div>
+      `;
+
+      document.body.appendChild(overlay);
+
+      document.getElementById('suggest-center-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        if (isLoading) return;
+
+        if (allData.length >= 999) {
+          const errorDiv = document.getElementById('suggest-error');
+          errorDiv.textContent = 'Maximum limit reached. Cannot submit new locations.';
+          errorDiv.style.display = 'block';
+          return;
+        }
+
+        isLoading = true;
+
+        const submitBtn = document.getElementById('suggest-submit-btn');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Submitting...';
+
+        const centerData = {
+          submission_type: 'center_suggestion',
+          center_name: document.getElementById('center-name').value,
+          center_address: document.getElementById('center-address').value,
+          center_phone: document.getElementById('center-phone').value,
+          center_hours: document.getElementById('center-hours').value,
+          center_accepts: document.getElementById('center-accepts').value,
+          center_lat: parseFloat(document.getElementById('center-lat').value),
+          center_lng: parseFloat(document.getElementById('center-lng').value),
+          center_status: 'pending',
+          user_name: currentUserName,
+          user_email: currentUserEmail || '',
+          timestamp: Date.now(),
+          description: `Suggested: ${document.getElementById('center-name').value}`,
+          action_type: '',
+          points: 0,
+          location_name: ''
+        };
+
+        const result = await window.dataSdk.create(centerData);
+
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Submit for Review';
+
+        isLoading = false;
+
+        if (result.isError) {
+          const errorDiv = document.getElementById('suggest-error');
+          errorDiv.textContent = 'Failed to submit. Please try again.';
+          errorDiv.style.display = 'block';
+        } else {
+          closeSuggestCenter();
+          showToast('Location submitted for admin review! 🎉', 'success');
+        }
+      });
+    }
+
+    function closeSuggestCenter() {
+      const overlay = document.getElementById('suggest-center-overlay');
+      if (overlay) {
+        overlay.remove();
+      }
+    }
+
+    window.showSuggestCenterForm = showSuggestCenterForm;
+    window.closeSuggestCenter = closeSuggestCenter;
+
+    async function approveCenter(submission) {
+      if (isLoading) return;
+
+      if (allData.length >= 998) {
+        showToast('Cannot approve - data limit nearly reached.', 'error');
+        return;
+      }
+
+      isLoading = true;
+
+      const updatedSubmission = { ...submission, center_status: 'approved' };
+      const updateResult = await window.dataSdk.update(updatedSubmission);
+
+      if (updateResult.isError) {
+        isLoading = false;
+        showToast('Failed to approve. Please try again.', 'error');
+        return;
+      }
+
+      const bonusReward = {
+        submission_type: 'reward_activity',
+        action_type: 'center_approved',
+        points: 100,
+        timestamp: Date.now(),
+        description: `Bonus: ${submission.center_name} approved!`,
+        user_name: submission.user_name,
+        user_email: submission.user_email || "",
+        location_name: submission.center_name,
+        center_name: '',
+        center_address: '',
+        center_phone: '',
+        center_lat: 0,
+        center_lng: 0,
+        center_accepts: '',
+        center_hours: '',
+        center_status: ''
+      };
+
+      const rewardResult = await window.dataSdk.create(bonusReward);
+
+      isLoading = false;
+
+      if (rewardResult.isError) {
+        showToast('Center approved but failed to award points.', 'success');
+      } else {
+        showToast(`Center approved! ${submission.user_name} earned 100 bonus points! 🎉`, 'success');
+      }
+    }
+
+    async function rejectCenter(submission) {
+      if (isLoading) return;
+
+      isLoading = true;
+
+      const updatedSubmission = { ...submission, center_status: 'rejected' };
+      const result = await window.dataSdk.update(updatedSubmission);
+
+      isLoading = false;
+
+      if (result.isError) {
+        showToast('Failed to reject. Please try again.', 'error');
+      } else {
+        showToast('Center submission rejected.', 'success');
+      }
+    }
+
+    window.approveCenter = approveCenter;
+    window.rejectCenter = rejectCenter;
+
+    function showAdminLogin() {
+      const config = window.elementSdk ? window.elementSdk.config : defaultConfig;
+      const baseSize = config.font_size || defaultConfig.font_size;
+      const surfaceColor = config.surface_color || defaultConfig.surface_color;
+      const textColor = config.text_color || defaultConfig.text_color;
+      const primaryAction = config.primary_action || defaultConfig.primary_action;
+      const backgroundColor = config.background_color || defaultConfig.background_color;
+
+      const overlay = document.createElement('div');
+      overlay.id = 'admin-login-overlay';
+      overlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+      `;
+
+      overlay.innerHTML = `
+        <div style="background: ${surfaceColor}; border-radius: ${baseSize * 0.75}px; padding: ${baseSize * 2}px; max-width: 400px; width: 90%; box-shadow: 0 8px 32px rgba(0,0,0,0.3);">
+          <h2 style="font-size: ${baseSize * 1.5}px; font-weight: 600; color: ${textColor}; margin-bottom: ${baseSize}px; text-align: center;">🔐 Admin Login</h2>
+          
+          <form id="admin-login-form" style="margin-bottom: ${baseSize}px;">
+            <label for="admin-password-input" style="display: block; font-size: ${baseSize * 0.875}px; color: ${textColor}; margin-bottom: ${baseSize * 0.5}px; font-weight: 500;">Password</label>
+            <input type="password" id="admin-password-input" style="width: 100%; padding: ${baseSize * 0.75}px; border: 2px solid ${backgroundColor}; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize}px; margin-bottom: ${baseSize}px; box-sizing: border-box;" placeholder="Enter admin password" />
+            
+            <div id="login-error" style="color: #ef4444; font-size: ${baseSize * 0.875}px; margin-bottom: ${baseSize}px; display: none;"></div>
+            
+            <div style="display: flex; gap: ${baseSize}px;">
+              <button type="button" onclick="closeAdminLogin()" style="flex: 1; background: ${backgroundColor}; color: ${textColor}; border: none; padding: ${baseSize * 0.75}px; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize}px; font-weight: 500; cursor: pointer;">Cancel</button>
+              <button type="submit" style="flex: 1; background: ${primaryAction}; color: white; border: none; padding: ${baseSize * 0.75}px; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize}px; font-weight: 500; cursor: pointer;">Login</button>
+            </div>
+          </form>
+        </div>
+      `;
+
+      document.body.appendChild(overlay);
+
+      document.getElementById('admin-login-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const password = document.getElementById('admin-password-input').value;
+        const correctPassword = config.admin_password || defaultConfig.admin_password;
+        
+        if (password === correctPassword) {
+          isAdminMode = true;
+          closeAdminLogin();
+          render();
+        } else {
+          const errorDiv = document.getElementById('login-error');
+          errorDiv.textContent = 'Incorrect password. Please try again.';
+          errorDiv.style.display = 'block';
+        }
+      });
+    }
+
+    function closeAdminLogin() {
+      const overlay = document.getElementById('admin-login-overlay');
+      if (overlay) {
+        overlay.remove();
+      }
+    }
+
+    function logoutAdmin() {
+      isAdminMode = false;
+      render();
+    }
+
+    function getActivityStats() {
+      const stats = {
+        totalActivities: rewardData.length,
+        totalPoints: totalPoints,
+        uniqueUsers: new Set(rewardData.map(r => r.user_email).filter(Boolean)).size,
+        pendingSubmissions: centerSubmissions.filter(s => s.center_status === 'pending').length,
+        approvedCenters: centerSubmissions.filter(s => s.center_status === 'approved').length,
+        rejectedCenters: centerSubmissions.filter(s => s.center_status === 'rejected').length,
+        byAction: {},
+        recentActivities: rewardData.slice().sort((a, b) => b.timestamp - a.timestamp).slice(0, 10)
+      };
+
+      rewardActions.forEach(action => {
+        const actionData = rewardData.filter(r => r.action_type === action.id);
+        stats.byAction[action.id] = {
+          name: action.name,
+          icon: action.icon,
+          count: actionData.length,
+          totalPoints: actionData.reduce((sum, r) => sum + r.points, 0)
+        };
+      });
+
+      return stats;
+    }
+
+    async function showQRScanner() {
+      if (!currentUserName) {
+        showAuthChoice(() => showQRScanner());
+        return;
+      }
+
+      const config = window.elementSdk ? window.elementSdk.config : defaultConfig;
+      const baseSize = config.font_size || defaultConfig.font_size;
+      const surfaceColor = config.surface_color || defaultConfig.surface_color;
+      const textColor = config.text_color || defaultConfig.text_color;
+      const primaryAction = config.primary_action || defaultConfig.primary_action;
+      const backgroundColor = config.background_color || defaultConfig.background_color;
+
+      const overlay = document.createElement('div');
+      overlay.id = 'qr-scanner-overlay';
+      overlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.9);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        padding: ${baseSize}px;
+        box-sizing: border-box;
+      `;
+
+      overlay.innerHTML = `
+        <div style="background: ${surfaceColor}; border-radius: ${baseSize * 0.75}px; padding: ${baseSize * 2}px; max-width: 500px; width: 100%; box-shadow: 0 8px 32px rgba(0,0,0,0.3);">
+          <h2 style="font-size: ${baseSize * 1.5}px; font-weight: 600; color: ${textColor}; margin-bottom: ${baseSize}px; text-align: center;">📷 Scan QR Code</h2>
+          <p style="font-size: ${baseSize * 0.875}px; color: ${textColor}; opacity: 0.7; margin-bottom: ${baseSize * 1.5}px; text-align: center;">Point your camera at the QR code at the recycling center</p>
+          
+          <div id="qr-reader" style="margin-bottom: ${baseSize * 1.5}px;"></div>
+          
+          <div id="scan-status" style="text-align: center; margin-bottom: ${baseSize}px; font-size: ${baseSize * 0.875}px; color: ${textColor};"></div>
+          
+          <button onclick="closeQRScanner()" style="width: 100%; background: ${backgroundColor}; color: ${textColor}; border: none; padding: ${baseSize * 0.75}px; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize}px; font-weight: 500; cursor: pointer;">Cancel</button>
+        </div>
+      `;
+
+      document.body.appendChild(overlay);
+
+      try {
+        html5QrCode = new Html5Qrcode("qr-reader");
+        isScanning = true;
+
+        const qrCodeSuccessCallback = async (decodedText) => {
+          const center = recyclingCenters.find(c => c.qrCode === decodedText);
+          
+          if (center) {
+            await stopQRScanner();
+            await earnPointsForVisit(center);
+            closeQRScanner();
+          } else {
+            const statusDiv = document.getElementById('scan-status');
+            if (statusDiv) {
+              statusDiv.textContent = '❌ Invalid QR code. Please scan a valid recycling center code.';
+              statusDiv.style.color = '#ef4444';
+            }
+          }
+        };
+
+        const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+        
+        await html5QrCode.start(
+          { facingMode: "environment" },
+          config,
+          qrCodeSuccessCallback
+        );
+
+        const statusDiv = document.getElementById('scan-status');
+        if (statusDiv) {
+          statusDiv.textContent = '📷 Scanner ready! Point at QR code...';
+          statusDiv.style.color = primaryAction;
+        }
+
+      } catch (err) {
+        console.error('Error starting scanner:', err);
+        const statusDiv = document.getElementById('scan-status');
+        if (statusDiv) {
+          statusDiv.textContent = '⚠️ Camera access denied or unavailable';
+          statusDiv.style.color = '#ef4444';
+        }
+      }
+    }
+
+    async function stopQRScanner() {
+      if (html5QrCode && isScanning) {
+        try {
+          await html5QrCode.stop();
+          isScanning = false;
+        } catch (err) {
+          console.error('Error stopping scanner:', err);
+        }
+      }
+    }
+
+    async function closeQRScanner() {
+      await stopQRScanner();
+      const overlay = document.getElementById('qr-scanner-overlay');
+      if (overlay) {
+        overlay.remove();
+      }
+      html5QrCode = null;
+    }
+
+    async function earnPointsForVisit(center) {
+      if (isLoading) return;
+
+      if (allData.length >= 999) {
+        showToast('Maximum limit of 999 activities reached. Please contact admin.', 'error');
+        return;
+      }
+
+      isLoading = true;
+
+      const rewardRecord = {
+        submission_type: 'reward_activity',
+        action_type: 'visit_center',
+        points: 50,
+        timestamp: Date.now(),
+        description: `Visited ${center.name}`,
+        user_name: currentUserName,
+        user_email: currentUserEmail || "",
+        location_name: center.name,
+        center_name: '',
+        center_address: '',
+        center_phone: '',
+        center_lat: 0,
+        center_lng: 0,
+        center_accepts: '',
+        center_hours: '',
+        center_status: ''
+      };
+
+      const result = await window.dataSdk.create(rewardRecord);
+
+      isLoading = false;
+
+      if (result.isError) {
+        showToast('Failed to earn points. Please try again.', 'error');
+      } else {
+        showToast(`🎉 +50 points for visiting ${center.name}!`, 'success');
+      }
+    }
+
+    function showCenterQRCode(centerId) {
+      const center = recyclingCenters.find(c => c.id === centerId);
+      if (!center) return;
+
+      const config = window.elementSdk ? window.elementSdk.config : defaultConfig;
+      const baseSize = config.font_size || defaultConfig.font_size;
+      const surfaceColor = config.surface_color || defaultConfig.surface_color;
+      const textColor = config.text_color || defaultConfig.text_color;
+      const backgroundColor = config.background_color || defaultConfig.background_color;
+
+      const overlay = document.createElement('div');
+      overlay.id = 'qr-display-overlay';
+      overlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+      `;
+
+      const qrCodeSvg = generateQRCodeSVG(center.qrCode);
+
+      overlay.innerHTML = `
+        <div style="background: ${surfaceColor}; border-radius: ${baseSize * 0.75}px; padding: ${baseSize * 2}px; max-width: 400px; width: 90%; box-shadow: 0 8px 32px rgba(0,0,0,0.3);">
+          <h2 style="font-size: ${baseSize * 1.5}px; font-weight: 600; color: ${textColor}; margin-bottom: ${baseSize * 0.5}px; text-align: center;">${center.name}</h2>
+          <p style="font-size: ${baseSize * 0.875}px; color: ${textColor}; opacity: 0.7; margin-bottom: ${baseSize * 1.5}px; text-align: center;">Scan this QR code at the center to earn 50 points</p>
+          
+          <div style="display: flex; justify-content: center; margin-bottom: ${baseSize * 1.5}px; background: white; padding: ${baseSize}px; border-radius: ${baseSize * 0.5}px;">
+            ${qrCodeSvg}
+          </div>
+          
+          <p style="font-size: ${baseSize * 0.75}px; color: ${textColor}; opacity: 0.7; margin-bottom: ${baseSize * 1.5}px; text-align: center;">Code: ${center.qrCode}</p>
+          
+          <button onclick="closeQRDisplay()" style="width: 100%; background: ${backgroundColor}; color: ${textColor}; border: none; padding: ${baseSize * 0.75}px; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize}px; font-weight: 500; cursor: pointer;">Close</button>
+        </div>
+      `;
+
+      document.body.appendChild(overlay);
+    }
+
+    function closeQRDisplay() {
+      const overlay = document.getElementById('qr-display-overlay');
+      if (overlay) {
+        overlay.remove();
+      }
+    }
+
+    function generateQRCodeSVG(text) {
+      return `
+        <svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+          <rect width="200" height="200" fill="white"/>
+          <rect x="20" y="20" width="60" height="60" fill="black"/>
+          <rect x="30" y="30" width="40" height="40" fill="white"/>
+          <rect x="40" y="40" width="20" height="20" fill="black"/>
+          
+          <rect x="120" y="20" width="60" height="60" fill="black"/>
+          <rect x="130" y="30" width="40" height="40" fill="white"/>
+          <rect x="140" y="40" width="20" height="20" fill="black"/>
+          
+          <rect x="20" y="120" width="60" height="60" fill="black"/>
+          <rect x="30" y="130" width="40" height="40" fill="white"/>
+          <rect x="40" y="140" width="20" height="20" fill="black"/>
+          
+          <rect x="90" y="90" width="20" height="20" fill="black"/>
+          <rect x="100" y="60" width="10" height="10" fill="black"/>
+          <rect x="60" y="100" width="10" height="10" fill="black"/>
+          <rect x="140" y="100" width="10" height="10" fill="black"/>
+          <rect x="100" y="140" width="10" height="10" fill="black"/>
+          
+          <text x="100" y="195" font-size="8" text-anchor="middle" fill="black">${text}</text>
+        </svg>
+      `;
+    }
+
+    window.showAdminLogin = showAdminLogin;
+    window.closeAdminLogin = closeAdminLogin;
+    window.logoutAdmin = logoutAdmin;
+    window.showQRScanner = showQRScanner;
+    window.closeQRScanner = closeQRScanner;
+    window.showCenterQRCode = showCenterQRCode;
+    window.closeQRDisplay = closeQRDisplay;
+
+    function calculateDistance(lat1, lng1, lat2, lng2) {
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLng = (lng2 - lng1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLng/2) * Math.sin(dLng/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    function getUserLocation() {
+      return new Promise((resolve, reject) => {
+        if (!navigator.geolocation) {
+          reject(new Error('Geolocation not supported'));
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          position => resolve({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          }),
+          error => reject(error)
+        );
+      });
+    }
+
+    function initializeMap() {
+      const mapDiv = document.getElementById('map');
+      if (!mapDiv) return;
+
+      const center = { lat: 20.5937, lng: 78.9629 };
+
+      map = new google.maps.Map(mapDiv, {
+        zoom: 5,
+        center: center,
+        mapTypeControl: true,
+        streetViewControl: true,
+        fullscreenControl: true
+      });
+
+      markers = [];
+      infoWindows = [];
+
+      getUserLocation().then(location => {
+        userLocation = location;
+        
+        new google.maps.Marker({
+          position: location,
+          map: map,
+          title: 'Your Location',
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 10,
+            fillColor: '#ff4444',
+            fillOpacity: 1,
+            strokeColor: '#ffffff',
+            strokeWeight: 3
+          }
+        });
+
+        map.setCenter(location);
+        map.setZoom(10);
+
+        updateDistances();
+      }).catch(error => {
+        console.log('Location access denied or unavailable');
+      });
+
+      recyclingCenters.forEach(center => {
+        const marker = new google.maps.Marker({
+          position: { lat: center.lat, lng: center.lng },
+          map: map,
+          title: center.name,
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 12,
+            fillColor: center.color,
+            fillOpacity: 1,
+            strokeColor: '#ffffff',
+            strokeWeight: 3
+          }
+        });
+
+        const infoWindowContent = `
+          <div style="padding: 10px; max-width: 280px; font-family: system-ui;">
+            <h3 style="font-weight: 600; margin-bottom: 8px; font-size: 15px; color: #1e293b;">${center.name}</h3>
+            <p style="font-size: 13px; margin-bottom: 6px; color: #475569;"><strong>Address:</strong> ${center.address}</p>
+            <p style="font-size: 13px; margin-bottom: 6px; color: #475569;"><strong>Accepts:</strong> ${Array.isArray(center.accepts) ? center.accepts.join(', ') : center.accepts}</p>
+            <p style="font-size: 13px; margin-bottom: 6px; color: #475569;"><strong>Hours:</strong> ${center.hours}</p>
+            <p style="font-size: 13px; margin-bottom: 6px; color: #475569;"><strong>Phone:</strong> <a href="tel:${center.phone}" style="color: ${center.color}; text-decoration: none;">${center.phone}</a></p>
+            <div style="display: flex; gap: 6px; margin-top: 8px;">
+              <button onclick="getDirections(${center.lat}, ${center.lng})" style="flex: 1; background: #10b981; color: white; padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">Get Directions</button>
+              ${center.qrCode ? `<button onclick="showCenterQRCode(${center.id})" style="flex: 1; background: #3b82f6; color: white; padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;">View QR</button>` : ''}
+            </div>
+          </div>
+        `;
+
+        const infoWindow = new google.maps.InfoWindow({
+          content: infoWindowContent
+        });
+
+        marker.addListener('click', () => {
+          infoWindows.forEach(iw => iw.close());
+          infoWindow.open(map, marker);
+          selectCenter(center.id);
+        });
+
+        markers.push({ id: center.id, marker, infoWindow });
+      });
+    }
+
+    function updateDistances() {
+      if (!userLocation) return;
+
+      recyclingCenters.forEach(center => {
+        const distance = calculateDistance(
+          userLocation.lat, userLocation.lng,
+          center.lat, center.lng
+        );
+        
+        const distanceElement = document.getElementById(`distance-${center.id}`);
+        if (distanceElement) {
+          distanceElement.textContent = `📍 ${distance.toFixed(1)} km away`;
+          distanceElement.style.display = 'block';
+        }
+      });
+    }
+
+    function selectCenter(centerId) {
+      selectedCenterId = centerId;
+      
+      const centerCards = document.querySelectorAll('.center-card');
+      centerCards.forEach(card => {
+        if (parseInt(card.dataset.centerId) === centerId) {
+          const center = recyclingCenters.find(c => c.id === centerId);
+          card.classList.add('active');
+          card.style.borderColor = center.color;
+        } else {
+          card.classList.remove('active');
+        }
+      });
+
+      const center = recyclingCenters.find(c => c.id === centerId);
+      if (center && map) {
+        map.panTo({ lat: center.lat, lng: center.lng });
+        map.setZoom(15);
+        
+        const markerData = markers.find(m => m.id === centerId);
+        if (markerData) {
+          infoWindows.forEach(iw => iw.close());
+          markerData.infoWindow.open(map, markerData.marker);
+        }
+      }
+
+      const centerCard = document.querySelector(`[data-center-id="${centerId}"]`);
+      if (centerCard) {
+        centerCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+
+    function loadGoogleMapsScript() {
+      return new Promise((resolve, reject) => {
+        if (window.google && window.google.maps) {
+          resolve();
+          return;
+        }
+
+        const script = document.createElement('script');
+        script.src = `https://maps.googleapis.com/maps/api/js?key=AIzaSyB41DRUbKWJHPxaFjMAwdrzWzbVKartNGg`;
+        script.async = true;
+        script.defer = true;
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
+
+    function getCurrentBadge() {
+      for (let i = badges.length - 1; i >= 0; i--) {
+        if (totalPoints >= badges[i].minPoints) {
+          return badges[i];
+        }
+      }
+      return badges[0];
+    }
+
+    function getNextBadge() {
+      const currentBadge = getCurrentBadge();
+      const currentIndex = badges.findIndex(b => b.name === currentBadge.name);
+      if (currentIndex < badges.length - 1) {
+        return badges[currentIndex + 1];
+      }
+      return null;
+    }
+
+    function updateRewardsDisplay() {
+      const config = window.elementSdk ? window.elementSdk.config : defaultConfig;
+      const baseSize = config.font_size || defaultConfig.font_size;
+      const textColor = config.text_color || defaultConfig.text_color;
+      const primaryAction = config.primary_action || defaultConfig.primary_action;
+      const backgroundColor = config.background_color || defaultConfig.background_color;
+
+      const pointsDisplay = document.getElementById('total-points');
+      if (pointsDisplay) {
+        pointsDisplay.textContent = totalPoints;
+        pointsDisplay.classList.add('points-animate');
+        setTimeout(() => pointsDisplay.classList.remove('points-animate'), 500);
+      }
+
+      const currentBadge = getCurrentBadge();
+      const badgeDisplay = document.getElementById('current-badge');
+      if (badgeDisplay) {
+        badgeDisplay.innerHTML = `
+          <div style="text-align: center;">
+            <div style="font-size: ${baseSize * 3}px; margin-bottom: ${baseSize * 0.5}px;">${currentBadge.icon}</div>
+            <p style="font-size: ${baseSize}px; font-weight: 600; color: ${textColor};">${currentBadge.name}</p>
+          </div>
+        `;
+      }
+
+      const nextBadge = getNextBadge();
+      const progressBar = document.getElementById('progress-bar');
+      const progressText = document.getElementById('progress-text');
+      
+      if (nextBadge && progressBar && progressText) {
+        const pointsNeeded = nextBadge.minPoints - currentBadge.minPoints;
+        const pointsEarned = totalPoints - currentBadge.minPoints;
+        const progressPercent = (pointsEarned / pointsNeeded) * 100;
+        
+        progressBar.style.width = `${Math.min(progressPercent, 100)}%`;
+        progressText.textContent = `${nextBadge.minPoints - totalPoints} points to ${nextBadge.name}`;
+      } else if (progressText) {
+        progressText.textContent = 'Maximum badge achieved! 🎉';
+      }
+
+      const historyContainer = document.getElementById('reward-history');
+      if (historyContainer) {
+        if (rewardData.length === 0) {
+          historyContainer.innerHTML = `
+            <p style="text-align: center; color: ${textColor}; opacity: 0.6; font-size: ${baseSize * 0.875}px; padding: ${baseSize * 2}px;">
+              Start earning rewards by completing eco-friendly actions!
+            </p>
+          `;
+        } else {
+          historyContainer.innerHTML = rewardData
+            .slice()
+            .sort((a, b) => b.timestamp - a.timestamp)
+            .slice(0, 5)
+            .map(reward => {
+              const date = new Date(reward.timestamp);
+              const action = rewardActions.find(a => a.id === reward.action_type);
+              return `
+                <div style="display: flex; align-items: center; justify-content: space-between; padding: ${baseSize * 0.75}px; background: ${backgroundColor}; border-radius: ${baseSize * 0.5}px; margin-bottom: ${baseSize * 0.5}px;">
+                  <div style="display: flex; align-items: center; gap: ${baseSize * 0.75}px;">
+                    <span style="font-size: ${baseSize * 1.5}px;">${action ? action.icon : '✅'}</span>
+                    <div>
+                      <p style="font-size: ${baseSize * 0.875}px; font-weight: 500; color: ${textColor}; margin: 0;">${reward.description}</p>
+                      <p style="font-size: ${baseSize * 0.75}px; color: ${textColor}; opacity: 0.6; margin: 0;">${date.toLocaleDateString()}</p>
+                    </div>
+                  </div>
+                  <span style="font-size: ${baseSize}px; font-weight: 600; color: ${primaryAction};">+${reward.points}</span>
+                </div>
+              `;
+            }).join('');
+        }
+      }
+    }
+
+    function showAuthChoice(callback) {
+      const config = window.elementSdk ? window.elementSdk.config : defaultConfig;
+      const baseSize = config.font_size || defaultConfig.font_size;
+      const surfaceColor = config.surface_color || defaultConfig.surface_color;
+      const textColor = config.text_color || defaultConfig.text_color;
+      const primaryAction = config.primary_action || defaultConfig.primary_action;
+      const secondaryAction = config.secondary_action || defaultConfig.secondary_action;
+      const backgroundColor = config.background_color || defaultConfig.background_color;
+
+      const overlay = document.createElement('div');
+      overlay.id = 'auth-choice-overlay';
+      overlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+      `;
+
+      overlay.innerHTML = `
+        <div style="background: ${surfaceColor}; border-radius: ${baseSize * 0.75}px; padding: ${baseSize * 2}px; max-width: 400px; width: 90%; box-shadow: 0 8px 32px rgba(0,0,0,0.3);">
+          <h2 style="font-size: ${baseSize * 1.5}px; font-weight: 600; color: ${textColor}; margin-bottom: ${baseSize * 0.5}px; text-align: center;">👋 Welcome!</h2>
+          <p style="font-size: ${baseSize * 0.875}px; color: ${textColor}; opacity: 0.7; margin-bottom: ${baseSize * 1.5}px; text-align: center;">Choose an option to get started</p>
+          
+          <div style="display: flex; flex-direction: column; gap: ${baseSize}px;">
+            <button onclick="showUserRegistration(currentAuthCallback)" style="width: 100%; background: ${primaryAction}; color: white; border: none; padding: ${baseSize * 1.25}px; border-radius: ${baseSize * 0.5}px; font-size: ${baseSize}px; font-weight: 500; cursor: pointer; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+              📝 Register New Account
+            </button>
+            
+            <button onclick="showUserLogin(currentAuthCallback)" style="width: 100%; background: ${secondaryAction}; color: white; border: none; padding: ${baseSize * 1.25}px; border-radius: ${baseSize * 0.5}px; font-size: ${baseSize}px; font-weight: 500; cursor: pointer; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+              🔑 Login
+            </button>
+            
+            <button onclick="closeAuthChoice()" style="width: 100%; background: ${backgroundColor}; color: ${textColor}; border: none; padding: ${baseSize * 0.75}px; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize}px; font-weight: 500; cursor: pointer;">Skip</button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(overlay);
+      
+      if (callback) {
+        window.currentAuthCallback = callback;
+      }
+    }
+
+    function closeAuthChoice() {
+      const overlay = document.getElementById('auth-choice-overlay');
+      if (overlay) {
+        overlay.remove();
+      }
+      window.currentAuthCallback = null;
+    }
+
+    function showUserRegistration(callback) {
+      closeAuthChoice();
+      
+      const config = window.elementSdk ? window.elementSdk.config : defaultConfig;
+      const baseSize = config.font_size || defaultConfig.font_size;
+      const surfaceColor = config.surface_color || defaultConfig.surface_color;
+      const textColor = config.text_color || defaultConfig.text_color;
+      const primaryAction = config.primary_action || defaultConfig.primary_action;
+      const backgroundColor = config.background_color || defaultConfig.background_color;
+
+      const overlay = document.createElement('div');
+      overlay.id = 'user-registration-overlay';
+      overlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+      `;
+
+      overlay.innerHTML = `
+        <div style="background: ${surfaceColor}; border-radius: ${baseSize * 0.75}px; padding: ${baseSize * 2}px; max-width: 400px; width: 90%; box-shadow: 0 8px 32px rgba(0,0,0,0.3);">
+          <h2 style="font-size: ${baseSize * 1.5}px; font-weight: 600; color: ${textColor}; margin-bottom: ${baseSize * 0.5}px; text-align: center;">📝 Register</h2>
+          <p style="font-size: ${baseSize * 0.875}px; color: ${textColor}; opacity: 0.7; margin-bottom: ${baseSize * 1.5}px; text-align: center;">Create your account to start earning rewards</p>
+          
+          <form id="user-registration-form">
+            <label for="register-name-input" style="display: block; font-size: ${baseSize * 0.875}px; color: ${textColor}; margin-bottom: ${baseSize * 0.5}px; font-weight: 500;">Your Name</label>
+            <input type="text" id="register-name-input" required style="width: 100%; padding: ${baseSize * 0.75}px; border: 2px solid ${backgroundColor}; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize}px; margin-bottom: ${baseSize}px; box-sizing: border-box;" placeholder="Enter your name" />
+            
+            <label for="register-email-input" style="display: block; font-size: ${baseSize * 0.875}px; color: ${textColor}; margin-bottom: ${baseSize * 0.5}px; font-weight: 500;">Email</label>
+            <input type="email" id="register-email-input" required style="width: 100%; padding: ${baseSize * 0.75}px; border: 2px solid ${backgroundColor}; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize}px; margin-bottom: ${baseSize}px; box-sizing: border-box;" placeholder="your.email@example.com" />
+            
+            <label for="register-password-input" style="display: block; font-size: ${baseSize * 0.875}px; color: ${textColor}; margin-bottom: ${baseSize * 0.5}px; font-weight: 500;">Password</label>
+            <input type="password" id="register-password-input" required style="width: 100%; padding: ${baseSize * 0.75}px; border: 2px solid ${backgroundColor}; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize}px; margin-bottom: ${baseSize}px; box-sizing: border-box;" placeholder="Create a password" />
+            
+            <div id="register-error" style="color: #ef4444; font-size: ${baseSize * 0.875}px; margin-bottom: ${baseSize}px; display: none;"></div>
+            
+            <div style="display: flex; gap: ${baseSize}px;">
+              <button type="button" onclick="closeUserRegistration(); showAuthChoice(currentAuthCallback)" style="flex: 1; background: ${backgroundColor}; color: ${textColor}; border: none; padding: ${baseSize * 0.75}px; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize}px; font-weight: 500; cursor: pointer;">Back</button>
+              <button type="submit" style="flex: 2; background: ${primaryAction}; color: white; border: none; padding: ${baseSize * 0.75}px; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize}px; font-weight: 500; cursor: pointer;">Register</button>
+            </div>
+          </form>
+        </div>
+      `;
+
+      document.body.appendChild(overlay);
+
+      document.getElementById('user-registration-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const name = document.getElementById('register-name-input').value;
+        const email = document.getElementById('register-email-input').value.toLowerCase();
+        const password = document.getElementById('register-password-input').value;
+        
+        const existingUser = registeredUsers.find(u => u.email === email);
+        if (existingUser) {
+          const errorDiv = document.getElementById('register-error');
+          errorDiv.textContent = 'This email is already registered. Please login instead.';
+          errorDiv.style.display = 'block';
+          return;
+        }
+        
+        registeredUsers.push({ name, email, password });
+        currentUserName = name;
+        currentUserEmail = email;
+        
+        overlay.remove();
+        showToast('Account created successfully! 🎉', 'success');
+        render();
+        if (callback) callback();
+      });
+    }
+
+    function closeUserRegistration() {
+      const overlay = document.getElementById('user-registration-overlay');
+      if (overlay) {
+        overlay.remove();
+      }
+    }
+
+    function showUserLogin(callback) {
+      closeAuthChoice();
+      
+      const config = window.elementSdk ? window.elementSdk.config : defaultConfig;
+      const baseSize = config.font_size || defaultConfig.font_size;
+      const surfaceColor = config.surface_color || defaultConfig.surface_color;
+      const textColor = config.text_color || defaultConfig.text_color;
+      const primaryAction = config.primary_action || defaultConfig.primary_action;
+      const backgroundColor = config.background_color || defaultConfig.background_color;
+
+      const overlay = document.createElement('div');
+      overlay.id = 'user-login-overlay';
+      overlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+      `;
+
+      overlay.innerHTML = `
+        <div style="background: ${surfaceColor}; border-radius: ${baseSize * 0.75}px; padding: ${baseSize * 2}px; max-width: 400px; width: 90%; box-shadow: 0 8px 32px rgba(0,0,0,0.3);">
+          <h2 style="font-size: ${baseSize * 1.5}px; font-weight: 600; color: ${textColor}; margin-bottom: ${baseSize * 0.5}px; text-align: center;">🔑 Login</h2>
+          <p style="font-size: ${baseSize * 0.875}px; color: ${textColor}; opacity: 0.7; margin-bottom: ${baseSize * 1.5}px; text-align: center;">Welcome back! Sign in to continue</p>
+          
+          <form id="user-login-form">
+            <label for="login-email-input" style="display: block; font-size: ${baseSize * 0.875}px; color: ${textColor}; margin-bottom: ${baseSize * 0.5}px; font-weight: 500;">Email</label>
+            <input type="email" id="login-email-input" required style="width: 100%; padding: ${baseSize * 0.75}px; border: 2px solid ${backgroundColor}; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize}px; margin-bottom: ${baseSize}px; box-sizing: border-box;" placeholder="your.email@example.com" />
+            
+            <label for="login-password-input" style="display: block; font-size: ${baseSize * 0.875}px; color: ${textColor}; margin-bottom: ${baseSize * 0.5}px; font-weight: 500;">Password</label>
+            <input type="password" id="login-password-input" required style="width: 100%; padding: ${baseSize * 0.75}px; border: 2px solid ${backgroundColor}; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize}px; margin-bottom: ${baseSize}px; box-sizing: border-box;" placeholder="Enter your password" />
+            
+            <div id="login-error" style="color: #ef4444; font-size: ${baseSize * 0.875}px; margin-bottom: ${baseSize}px; display: none;"></div>
+            
+            <div style="display: flex; gap: ${baseSize}px;">
+              <button type="button" onclick="closeUserLogin(); showAuthChoice(currentAuthCallback)" style="flex: 1; background: ${backgroundColor}; color: ${textColor}; border: none; padding: ${baseSize * 0.75}px; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize}px; font-weight: 500; cursor: pointer;">Back</button>
+              <button type="submit" style="flex: 2; background: ${primaryAction}; color: white; border: none; padding: ${baseSize * 0.75}px; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize}px; font-weight: 500; cursor: pointer;">Login</button>
+            </div>
+          </form>
+        </div>
+      `;
+
+      document.body.appendChild(overlay);
+
+      document.getElementById('user-login-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const email = document.getElementById('login-email-input').value.toLowerCase();
+        const password = document.getElementById('login-password-input').value;
+        
+        const user = registeredUsers.find(u => u.email === email && u.password === password);
+        
+        if (user) {
+          currentUserName = user.name;
+          currentUserEmail = user.email;
+          
+          overlay.remove();
+          showToast('Welcome back! 🎉', 'success');
+          render();
+          if (callback) callback();
+        } else {
+          const errorDiv = document.getElementById('login-error');
+          errorDiv.textContent = 'Invalid email or password. Please try again.';
+          errorDiv.style.display = 'block';
+        }
+      });
+    }
+
+    function closeUserLogin() {
+      const overlay = document.getElementById('user-login-overlay');
+      if (overlay) {
+        overlay.remove();
+      }
+    }
+
+    async function earnPoints(actionId) {
+      if (isLoading) return;
+
+      const action = rewardActions.find(a => a.id === actionId);
+      if (!action) return;
+
+      if (action.requiresScan) {
+        if (!currentUserName) {
+          showAuthChoice(() => showQRScanner());
+          return;
+        }
+        showQRScanner();
+        return;
+      }
+
+      if (!currentUserName) {
+        showAuthChoice(() => earnPoints(actionId));
+        return;
+      }
+
+      if (allData.length >= 999) {
+        showToast('Maximum limit of 999 activities reached. Please contact admin.', 'error');
+        return;
+      }
+
+      isLoading = true;
+
+      const actionButton = document.getElementById(`action-btn-${actionId}`);
+      if (actionButton) {
+        actionButton.disabled = true;
+        actionButton.textContent = 'Earning...';
+      }
+
+      const rewardRecord = {
+        submission_type: 'reward_activity',
+        action_type: actionId,
+        points: action.points,
+        timestamp: Date.now(),
+        description: action.name,
+        user_name: currentUserName,
+        user_email: currentUserEmail || "",
+        location_name: "",
+        center_name: '',
+        center_address: '',
+        center_phone: '',
+        center_lat: 0,
+        center_lng: 0,
+        center_accepts: '',
+        center_hours: '',
+        center_status: ''
+      };
+
+      const result = await window.dataSdk.create(rewardRecord);
+
+      if (actionButton) {
+        actionButton.disabled = false;
+        actionButton.textContent = `Earn ${action.points} pts`;
+      }
+
+      isLoading = false;
+
+      if (result.isError) {
+        showToast('Failed to earn points. Please try again.', 'error');
+      } else {
+        showToast(`+${action.points} points earned! 🎉`, 'success');
+      }
+    }
+
+    function checkUserRegistration() {
+      if (!currentUserName) {
+        showAuthChoice(null);
+      }
+    }
+
+    window.showAuthChoice = showAuthChoice;
+    window.closeAuthChoice = closeAuthChoice;
+    window.showUserRegistration = showUserRegistration;
+    window.closeUserRegistration = closeUserRegistration;
+    window.showUserLogin = showUserLogin;
+    window.closeUserLogin = closeUserLogin;
+    window.checkUserRegistration = checkUserRegistration;
+
+    function showToast(message, type) {
+      const config = window.elementSdk ? window.elementSdk.config : defaultConfig;
+      const baseSize = config.font_size || defaultConfig.font_size;
+      const primaryAction = config.primary_action || defaultConfig.primary_action;
+
+      const toast = document.createElement('div');
+      toast.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: ${type === 'success' ? primaryAction : '#ef4444'};
+        color: white;
+        padding: ${baseSize}px ${baseSize * 1.5}px;
+        border-radius: ${baseSize * 0.5}px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        z-index: 10000;
+        font-size: ${baseSize}px;
+        font-weight: 500;
+        max-width: 300px;
+      `;
+      toast.textContent = message;
+      document.body.appendChild(toast);
+
+      setTimeout(() => {
+        toast.style.transition = 'opacity 0.3s';
+        toast.style.opacity = '0';
+        setTimeout(() => document.body.removeChild(toast), 300);
+      }, 3000);
+    }
+
+    function render() {
+      const config = window.elementSdk ? window.elementSdk.config : defaultConfig;
+      const customFont = config.font_family || defaultConfig.font_family;
+      const baseFontStack = 'system-ui, -apple-system, sans-serif';
+      const fontFamily = `${customFont}, ${baseFontStack}`;
+      const baseSize = config.font_size || defaultConfig.font_size;
+      
+      const backgroundColor = config.background_color || defaultConfig.background_color;
+      const surfaceColor = config.surface_color || defaultConfig.surface_color;
+      const textColor = config.text_color || defaultConfig.text_color;
+      const primaryAction = config.primary_action || defaultConfig.primary_action;
+      const secondaryAction = config.secondary_action || defaultConfig.secondary_action;
+
+      const appTitle = config.app_title || defaultConfig.app_title;
+      const tagline = config.tagline || defaultConfig.tagline;
+      const learnHeading = config.learn_heading || defaultConfig.learn_heading;
+      const mapHeading = config.map_heading || defaultConfig.map_heading;
+      const rewardsHeading = config.rewards_heading || defaultConfig.rewards_heading;
+
+      const app = document.getElementById('app');
+      app.style.backgroundColor = backgroundColor;
+      app.style.color = textColor;
+      app.style.fontFamily = fontFamily;
+      
+      const currentBadge = getCurrentBadge();
+      const nextBadge = getNextBadge();
+      
+      if (isAdminMode) {
+        const stats = getActivityStats();
+        const pendingSubmissions = centerSubmissions.filter(s => s.center_status === 'pending');
+        
+        app.innerHTML = `
+          <div class="w-full min-h-full" style="background-color: ${backgroundColor}; padding: ${baseSize * 1.5}px;">
+            <!-- Admin Header -->
+            <header style="margin-bottom: ${baseSize * 2}px; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <h1 style="font-size: ${baseSize * 2.5}px; font-weight: 700; color: ${textColor}; margin-bottom: ${baseSize * 0.5}px;">🔐 Admin Dashboard</h1>
+                <p style="font-size: ${baseSize * 1.125}px; color: ${textColor}; opacity: 0.8;">Monitor and manage eco-activities</p>
+              </div>
+              <button onclick="logoutAdmin()" style="background: ${secondaryAction}; color: white; border: none; padding: ${baseSize * 0.75}px ${baseSize * 1.5}px; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize}px; font-weight: 500; cursor: pointer;">Logout</button>
+            </header>
+
+            <!-- Statistics Grid -->
+            <section style="max-width: 1400px; margin: 0 auto ${baseSize * 3}px;">
+              <h2 style="font-size: ${baseSize * 1.875}px; font-weight: 600; color: ${textColor}; margin-bottom: ${baseSize * 1.5}px;">📊 Overview Statistics</h2>
+              
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: ${baseSize * 1.25}px; margin-bottom: ${baseSize * 2}px;">
+                <div style="background: ${surfaceColor}; border-radius: ${baseSize * 0.75}px; padding: ${baseSize * 1.5}px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                  <p style="font-size: ${baseSize * 0.875}px; color: ${textColor}; opacity: 0.7; margin-bottom: ${baseSize * 0.5}px;">Total Activities</p>
+                  <p style="font-size: ${baseSize * 2.5}px; font-weight: 700; color: ${primaryAction}; margin: 0;">${stats.totalActivities}</p>
+                </div>
+                
+                <div style="background: ${surfaceColor}; border-radius: ${baseSize * 0.75}px; padding: ${baseSize * 1.5}px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                  <p style="font-size: ${baseSize * 0.875}px; color: ${textColor}; opacity: 0.7; margin-bottom: ${baseSize * 0.5}px;">Total Points Awarded</p>
+                  <p style="font-size: ${baseSize * 2.5}px; font-weight: 700; color: ${primaryAction}; margin: 0;">${stats.totalPoints}</p>
+                </div>
+                
+                <div style="background: ${surfaceColor}; border-radius: ${baseSize * 0.75}px; padding: ${baseSize * 1.5}px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                  <p style="font-size: ${baseSize * 0.875}px; color: ${textColor}; opacity: 0.7; margin-bottom: ${baseSize * 0.5}px;">Active Users</p>
+                  <p style="font-size: ${baseSize * 2.5}px; font-weight: 700; color: ${primaryAction}; margin: 0;">${stats.uniqueUsers}</p>
+                </div>
+                
+                <div style="background: ${surfaceColor}; border-radius: ${baseSize * 0.75}px; padding: ${baseSize * 1.5}px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                  <p style="font-size: ${baseSize * 0.875}px; color: ${textColor}; opacity: 0.7; margin-bottom: ${baseSize * 0.5}px;">Data Limit</p>
+                  <p style="font-size: ${baseSize * 2.5}px; font-weight: 700; color: ${allData.length >= 999 ? '#ef4444' : primaryAction}; margin: 0;">${allData.length}/999</p>
+                </div>
+              </div>
+
+              <!-- Pending Center Submissions -->
+              ${pendingSubmissions.length > 0 ? `
+                <div style="background: ${surfaceColor}; border-radius: ${baseSize * 0.75}px; padding: ${baseSize * 1.5}px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: ${baseSize * 2}px;">
+                  <h3 style="font-size: ${baseSize * 1.25}px; font-weight: 600; color: ${textColor}; margin-bottom: ${baseSize * 1.25}px;">📍 Pending Center Submissions (${pendingSubmissions.length})</h3>
+                  <div style="display: grid; gap: ${baseSize}px;">
+                    ${pendingSubmissions.map(submission => {
+                      const date = new Date(submission.timestamp);
+                      return `
+                        <div style="background: ${backgroundColor}; border-radius: ${baseSize * 0.5}px; padding: ${baseSize * 1.5}px; border-left: 4px solid #f59e0b;">
+                          <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: ${baseSize}px;">
+                            <div>
+                              <h4 style="font-size: ${baseSize * 1.125}px; font-weight: 600; color: ${textColor}; margin: 0 0 ${baseSize * 0.5}px 0;">${submission.center_name}</h4>
+                              <p style="font-size: ${baseSize * 0.875}px; color: ${textColor}; opacity: 0.7; margin: 0;">Submitted by: ${submission.user_name} (${submission.user_email || 'No email'})</p>
+                              <p style="font-size: ${baseSize * 0.75}px; color: ${textColor}; opacity: 0.6; margin: ${baseSize * 0.25}px 0 0 0;">${date.toLocaleDateString()} ${date.toLocaleTimeString()}</p>
+                            </div>
+                          </div>
+                          
+                          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: ${baseSize * 0.75}px; margin-bottom: ${baseSize}px;">
+                            <div>
+                              <p style="font-size: ${baseSize * 0.75}px; color: ${textColor}; opacity: 0.7; margin: 0 0 ${baseSize * 0.25}px 0;">Address:</p>
+                              <p style="font-size: ${baseSize * 0.875}px; color: ${textColor}; margin: 0;">${submission.center_address}</p>
+                            </div>
+                            <div>
+                              <p style="font-size: ${baseSize * 0.75}px; color: ${textColor}; opacity: 0.7; margin: 0 0 ${baseSize * 0.25}px 0;">Phone:</p>
+                              <p style="font-size: ${baseSize * 0.875}px; color: ${textColor}; margin: 0;">${submission.center_phone}</p>
+                            </div>
+                            <div>
+                              <p style="font-size: ${baseSize * 0.75}px; color: ${textColor}; opacity: 0.7; margin: 0 0 ${baseSize * 0.25}px 0;">Hours:</p>
+                              <p style="font-size: ${baseSize * 0.875}px; color: ${textColor}; margin: 0;">${submission.center_hours}</p>
+                            </div>
+                            <div>
+                              <p style="font-size: ${baseSize * 0.75}px; color: ${textColor}; opacity: 0.7; margin: 0 0 ${baseSize * 0.25}px 0;">Accepts:</p>
+                              <p style="font-size: ${baseSize * 0.875}px; color: ${textColor}; margin: 0;">${submission.center_accepts}</p>
+                            </div>
+                            <div>
+                              <p style="font-size: ${baseSize * 0.75}px; color: ${textColor}; opacity: 0.7; margin: 0 0 ${baseSize * 0.25}px 0;">Location:</p>
+                              <p style="font-size: ${baseSize * 0.875}px; color: ${textColor}; margin: 0;">${submission.center_lat.toFixed(4)}, ${submission.center_lng.toFixed(4)}</p>
+                            </div>
+                          </div>
+                          
+                          <div style="display: flex; gap: ${baseSize}px;">
+                            <button onclick="approveCenter(${JSON.stringify(submission).replace(/"/g, '&quot;')})" style="flex: 1; background: ${primaryAction}; color: white; border: none; padding: ${baseSize * 0.75}px; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize * 0.875}px; font-weight: 500; cursor: pointer;">✓ Approve & Add to Map</button>
+                            <button onclick="rejectCenter(${JSON.stringify(submission).replace(/"/g, '&quot;')})" style="flex: 1; background: #ef4444; color: white; border: none; padding: ${baseSize * 0.75}px; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize * 0.875}px; font-weight: 500; cursor: pointer;">✕ Reject</button>
+                          </div>
+                        </div>
+                      `;
+                    }).join('')}
+                  </div>
+                </div>
+              ` : `
+                <div style="background: ${surfaceColor}; border-radius: ${baseSize * 0.75}px; padding: ${baseSize * 1.5}px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: ${baseSize * 2}px;">
+                  <h3 style="font-size: ${baseSize * 1.25}px; font-weight: 600; color: ${textColor}; margin-bottom: ${baseSize * 1.25}px;">📍 Pending Center Submissions</h3>
+                  <p style="text-align: center; color: ${textColor}; opacity: 0.6; font-size: ${baseSize * 0.875}px; padding: ${baseSize * 2}px;">No pending submissions</p>
+                </div>
+              `}
+
+              <!-- Center Statistics -->
+              <div style="background: ${surfaceColor}; border-radius: ${baseSize * 0.75}px; padding: ${baseSize * 1.5}px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: ${baseSize * 2}px;">
+                <h3 style="font-size: ${baseSize * 1.25}px; font-weight: 600; color: ${textColor}; margin-bottom: ${baseSize * 1.25}px;">📊 Center Submission Stats</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: ${baseSize}px;">
+                  <div style="background: ${backgroundColor}; border-radius: ${baseSize * 0.5}px; padding: ${baseSize}px; text-align: center;">
+                    <p style="font-size: ${baseSize * 2}px; font-weight: 700; color: #f59e0b; margin: 0;">${stats.pendingSubmissions}</p>
+                    <p style="font-size: ${baseSize * 0.875}px; color: ${textColor}; opacity: 0.7; margin: ${baseSize * 0.25}px 0 0 0;">Pending</p>
+                  </div>
+                  <div style="background: ${backgroundColor}; border-radius: ${baseSize * 0.5}px; padding: ${baseSize}px; text-align: center;">
+                    <p style="font-size: ${baseSize * 2}px; font-weight: 700; color: ${primaryAction}; margin: 0;">${stats.approvedCenters}</p>
+                    <p style="font-size: ${baseSize * 0.875}px; color: ${textColor}; opacity: 0.7; margin: ${baseSize * 0.25}px 0 0 0;">Approved</p>
+                  </div>
+                  <div style="background: ${backgroundColor}; border-radius: ${baseSize * 0.5}px; padding: ${baseSize}px; text-align: center;">
+                    <p style="font-size: ${baseSize * 2}px; font-weight: 700; color: #ef4444; margin: 0;">${stats.rejectedCenters}</p>
+                    <p style="font-size: ${baseSize * 0.875}px; color: ${textColor}; opacity: 0.7; margin: ${baseSize * 0.25}px 0 0 0;">Rejected</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Activity Breakdown -->
+              <div style="background: ${surfaceColor}; border-radius: ${baseSize * 0.75}px; padding: ${baseSize * 1.5}px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: ${baseSize * 2}px;">
+                <h3 style="font-size: ${baseSize * 1.25}px; font-weight: 600; color: ${textColor}; margin-bottom: ${baseSize * 1.25}px;">Activity Breakdown</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: ${baseSize}px;">
+                  ${Object.entries(stats.byAction).map(([id, data]) => `
+                    <div style="background: ${backgroundColor}; border-radius: ${baseSize * 0.5}px; padding: ${baseSize}px;">
+                      <div style="display: flex; align-items: center; gap: ${baseSize * 0.75}px; margin-bottom: ${baseSize * 0.5}px;">
+                        <span style="font-size: ${baseSize * 1.5}px;">${data.icon}</span>
+                        <p style="font-size: ${baseSize * 0.875}px; font-weight: 500; color: ${textColor}; margin: 0;">${data.name}</p>
+                      </div>
+                      <div style="display: flex; justify-content: space-between; font-size: ${baseSize * 0.75}px; color: ${textColor}; opacity: 0.7;">
+                        <span>Count: ${data.count}</span>
+                        <span>Points: ${data.totalPoints}</span>
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+
+              <!-- Recent Activities -->
+              <div style="background: ${surfaceColor}; border-radius: ${baseSize * 0.75}px; padding: ${baseSize * 1.5}px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                <h3 style="font-size: ${baseSize * 1.25}px; font-weight: 600; color: ${textColor}; margin-bottom: ${baseSize * 1.25}px;">Recent Activities (Latest 10)</h3>
+                ${stats.recentActivities.length === 0 ? `
+                  <p style="text-align: center; color: ${textColor}; opacity: 0.6; font-size: ${baseSize * 0.875}px; padding: ${baseSize * 2}px;">No activities yet</p>
+                ` : `
+                  <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                      <thead>
+                        <tr style="border-bottom: 2px solid ${backgroundColor};">
+                          <th style="text-align: left; padding: ${baseSize * 0.75}px; font-size: ${baseSize * 0.875}px; font-weight: 600; color: ${textColor};">User</th>
+                          <th style="text-align: left; padding: ${baseSize * 0.75}px; font-size: ${baseSize * 0.875}px; font-weight: 600; color: ${textColor};">Activity</th>
+                          <th style="text-align: left; padding: ${baseSize * 0.75}px; font-size: ${baseSize * 0.875}px; font-weight: 600; color: ${textColor};">Points</th>
+                          <th style="text-align: left; padding: ${baseSize * 0.75}px; font-size: ${baseSize * 0.875}px; font-weight: 600; color: ${textColor};">Date & Time</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${stats.recentActivities.map(activity => {
+                          const date = new Date(activity.timestamp);
+                          const action = rewardActions.find(a => a.id === activity.action_type);
+                          return `
+                            <tr style="border-bottom: 1px solid ${backgroundColor};">
+                              <td style="padding: ${baseSize * 0.75}px; font-size: ${baseSize * 0.875}px; color: ${textColor};">
+                                <div>
+                                  <p style="margin: 0; font-weight: 500;">${activity.user_name || 'Anonymous'}</p>
+                                  ${activity.user_email ? `<p style="margin: 0; font-size: ${baseSize * 0.75}px; opacity: 0.7;">${activity.user_email}</p>` : ''}
+                                </div>
+                              </td>
+                              <td style="padding: ${baseSize * 0.75}px; font-size: ${baseSize * 0.875}px; color: ${textColor};">
+                                <span style="margin-right: ${baseSize * 0.5}px;">${action ? action.icon : '✅'}</span>
+                                ${activity.description}
+                                ${activity.location_name ? `<br/><span style="font-size: ${baseSize * 0.75}px; opacity: 0.7;">@ ${activity.location_name}</span>` : ''}
+                              </td>
+                              <td style="padding: ${baseSize * 0.75}px; font-size: ${baseSize * 0.875}px; font-weight: 600; color: ${primaryAction};">+${activity.points}</td>
+                              <td style="padding: ${baseSize * 0.75}px; font-size: ${baseSize * 0.875}px; color: ${textColor}; opacity: 0.7;">
+                                ${date.toLocaleDateString()}<br/>
+                                ${date.toLocaleTimeString()}
+                              </td>
+                            </tr>
+                          `;
+                        }).join('')}
+                      </tbody>
+                    </table>
+                  </div>
+                `}
+              </div>
+            </section>
+          </div>
+        `;
+        return;
+      }
+      
+      app.innerHTML = `
+        <div class="w-full min-h-full" style="background-color: ${backgroundColor}; padding: ${baseSize * 1.5}px;">
+          <!-- Header -->
+          <header class="text-center" style="margin-bottom: ${baseSize * 2}px; position: relative;">
+            <h1 style="font-size: ${baseSize * 2.5}px; font-weight: 700; color: ${textColor}; margin-bottom: ${baseSize * 0.5}px;">${appTitle}</h1>
+            <p style="font-size: ${baseSize * 1.125}px; color: ${textColor}; opacity: 0.8;">${tagline}</p>
+            ${currentUserName ? `
+              <div style="margin-top: ${baseSize}px; display: inline-flex; align-items: center; gap: ${baseSize * 0.75}px; background: ${surfaceColor}; padding: ${baseSize * 0.75}px ${baseSize * 1.5}px; border-radius: ${baseSize * 0.5}px; box-shadow: 0 2px 6px rgba(0,0,0,0.1);">
+                <span style="font-size: ${baseSize * 1.5}px;">👤</span>
+                <div style="text-align: left;">
+                  <p style="font-size: ${baseSize * 0.875}px; font-weight: 600; color: ${textColor}; margin: 0;">${currentUserName}</p>
+                  ${currentUserEmail ? `<p style="font-size: ${baseSize * 0.75}px; color: ${textColor}; opacity: 0.7; margin: 0;">${currentUserEmail}</p>` : ''}
+                </div>
+              </div>
+            ` : `
+              <button onclick="showAuthChoice()" style="margin-top: ${baseSize}px; background: ${primaryAction}; color: white; border: none; padding: ${baseSize * 0.75}px ${baseSize * 1.5}px; border-radius: ${baseSize * 0.5}px; font-size: ${baseSize}px; font-weight: 500; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.1); transition: opacity 0.2s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+                👤 Sign In / Register
+              </button>
+            `}
+            <button onclick="showAdminLogin()" style="position: absolute; top: 0; right: 0; background: ${surfaceColor}; color: ${textColor}; border: 2px solid ${backgroundColor}; padding: ${baseSize * 0.5}px ${baseSize}px; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize * 0.875}px; cursor: pointer;">🔐 Admin</button>
+          </header>
+
+          <!-- QR Scanner & Suggest Center Buttons -->
+          <section style="margin-bottom: ${baseSize * 2}px; max-width: 1200px; margin-left: auto; margin-right: auto; text-align: center;">
+            <div style="display: flex; flex-wrap: wrap; gap: ${baseSize}px; justify-content: center;">
+              <button onclick="showQRScanner()" style="background: linear-gradient(135deg, ${primaryAction} 0%, ${secondaryAction} 100%); color: white; border: none; padding: ${baseSize * 1.25}px ${baseSize * 2.5}px; border-radius: ${baseSize * 0.75}px; font-size: ${baseSize * 1.25}px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.15); transition: transform 0.2s, box-shadow 0.2s;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 16px rgba(0,0,0,0.2)'" onmouseout="this.style.transform=''; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'">
+                📷 Scan QR Code at Center (+50 pts)
+              </button>
+              
+              <button onclick="showSuggestCenterForm()" style="background: ${surfaceColor}; color: ${textColor}; border: 2px solid ${primaryAction}; padding: ${baseSize * 1.25}px ${baseSize * 2.5}px; border-radius: ${baseSize * 0.75}px; font-size: ${baseSize * 1.25}px; font-weight: 600; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.15); transition: transform 0.2s, box-shadow 0.2s;" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 16px rgba(0,0,0,0.2)'" onmouseout="this.style.transform=''; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.15)'">
+                📍 Suggest New Location
+              </button>
+            </div>
+            <p style="font-size: ${baseSize * 0.875}px; color: ${textColor}; opacity: 0.7; margin-top: ${baseSize}px;">Visit any recycling center and scan their QR code to earn points! Or suggest a new location for admin approval.</p>
+          </section>
+
+          <!-- Rewards Section -->
+          <section style="margin-bottom: ${baseSize * 3}px; max-width: 1200px; margin-left: auto; margin-right: auto;">
+            <h2 style="font-size: ${baseSize * 1.875}px; font-weight: 600; color: ${textColor}; margin-bottom: ${baseSize * 1.5}px; text-align: center;">${rewardsHeading}</h2>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: ${baseSize * 1.25}px; margin-bottom: ${baseSize * 2}px;">
+              <!-- Points Card -->
+              <div style="background-color: ${surfaceColor}; border-radius: ${baseSize * 0.75}px; padding: ${baseSize * 1.5}px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center;">
+                <p style="font-size: ${baseSize * 0.875}px; color: ${textColor}; opacity: 0.7; margin-bottom: ${baseSize * 0.5}px;">Total Points</p>
+                <p id="total-points" style="font-size: ${baseSize * 3}px; font-weight: 700; color: ${primaryAction}; margin: 0;">${totalPoints}</p>
+              </div>
+
+              <!-- Current Badge -->
+              <div style="background-color: ${surfaceColor}; border-radius: ${baseSize * 0.75}px; padding: ${baseSize * 1.5}px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                <p style="font-size: ${baseSize * 0.875}px; color: ${textColor}; opacity: 0.7; margin-bottom: ${baseSize}px; text-align: center;">Current Badge</p>
+                <div id="current-badge">
+                  <div style="text-align: center;">
+                    <div style="font-size: ${baseSize * 3}px; margin-bottom: ${baseSize * 0.5}px;">${currentBadge.icon}</div>
+                    <p style="font-size: ${baseSize}px; font-weight: 600; color: ${textColor};">${currentBadge.name}</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Progress Card -->
+              <div style="background-color: ${surfaceColor}; border-radius: ${baseSize * 0.75}px; padding: ${baseSize * 1.5}px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                <p style="font-size: ${baseSize * 0.875}px; color: ${textColor}; opacity: 0.7; margin-bottom: ${baseSize}px;">Progress to Next Badge</p>
+                ${nextBadge ? `
+                  <div style="margin-bottom: ${baseSize * 0.75}px;">
+                    <div style="display: flex; align-items: center; gap: ${baseSize * 0.5}px; margin-bottom: ${baseSize * 0.5}px;">
+                      <span style="font-size: ${baseSize * 1.5}px;">${nextBadge.icon}</span>
+                      <span style="font-size: ${baseSize * 0.875}px; font-weight: 500; color: ${textColor};">${nextBadge.name}</span>
+                    </div>
+                    <div style="background: ${backgroundColor}; border-radius: ${baseSize * 0.5}px; height: ${baseSize * 0.75}px; overflow: hidden;">
+                      <div id="progress-bar" class="progress-bar" style="background: ${primaryAction}; height: 100%; width: ${Math.min(((totalPoints - currentBadge.minPoints) / (nextBadge.minPoints - currentBadge.minPoints)) * 100, 100)}%; border-radius: ${baseSize * 0.5}px;"></div>
+                    </div>
+                  </div>
+                  <p id="progress-text" style="font-size: ${baseSize * 0.75}px; color: ${textColor}; opacity: 0.7; margin: 0;">${nextBadge.minPoints - totalPoints} points to ${nextBadge.name}</p>
+                ` : `
+                  <p id="progress-text" style="font-size: ${baseSize * 0.875}px; color: ${primaryAction}; font-weight: 600; text-align: center;">Maximum badge achieved! 🎉</p>
+                `}
+              </div>
+            </div>
+
+            <!-- Earn Points Actions -->
+            <div style="background-color: ${surfaceColor}; border-radius: ${baseSize * 0.75}px; padding: ${baseSize * 1.5}px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: ${baseSize * 2}px;">
+              <h3 style="font-size: ${baseSize * 1.25}px; font-weight: 600; color: ${textColor}; margin-bottom: ${baseSize * 1.25}px;">Earn Points</h3>
+              <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: ${baseSize}px;">
+                ${rewardActions.map(action => `
+                  <div style="background: ${backgroundColor}; border-radius: ${baseSize * 0.5}px; padding: ${baseSize * 1.25}px; display: flex; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; align-items: center; gap: ${baseSize * 0.75}px;">
+                      <span style="font-size: ${baseSize * 2}px;">${action.icon}</span>
+                      <div>
+                        <p style="font-size: ${baseSize * 0.875}px; font-weight: 500; color: ${textColor}; margin: 0;">${action.name}</p>
+                        <p style="font-size: ${baseSize * 0.75}px; color: ${primaryAction}; font-weight: 600; margin: 0;">+${action.points} pts</p>
+                      </div>
+                    </div>
+                    <button id="action-btn-${action.id}" onclick="earnPoints('${action.id}')" style="background: ${primaryAction}; color: white; border: none; padding: ${baseSize * 0.5}px ${baseSize * 0.75}px; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize * 0.75}px; font-weight: 500; cursor: pointer; white-space: nowrap; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+                      ${action.requiresScan ? '📷 Scan' : `Earn ${action.points} pts`}
+                    </button>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+
+            <!-- Recent Activity -->
+            <div style="background-color: ${surfaceColor}; border-radius: ${baseSize * 0.75}px; padding: ${baseSize * 1.5}px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+              <h3 style="font-size: ${baseSize * 1.25}px; font-weight: 600; color: ${textColor}; margin-bottom: ${baseSize * 1.25}px;">Recent Activity</h3>
+              <div id="reward-history">
+                <p style="text-align: center; color: ${textColor}; opacity: 0.6; font-size: ${baseSize * 0.875}px; padding: ${baseSize * 2}px;">
+                  Start earning rewards by completing eco-friendly actions!
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <!-- Waste Categories Section -->
+          <section style="margin-bottom: ${baseSize * 3}px;">
+            <h2 style="font-size: ${baseSize * 1.875}px; font-weight: 600; color: ${textColor}; margin-bottom: ${baseSize * 1.5}px; text-align: center;">${learnHeading}</h2>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: ${baseSize * 1.25}px; max-width: 1200px; margin: 0 auto;">
+              ${wasteCategories.map(category => `
+                <div class="category-card" style="background-color: ${surfaceColor}; border-radius: ${baseSize * 0.75}px; padding: ${baseSize * 1.5}px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.1);" onclick="toggleCategory('${category.id}')">
+                  <div style="display: flex; align-items: center; margin-bottom: ${baseSize}px;">
+                    <span style="font-size: ${baseSize * 2.5}px; margin-right: ${baseSize * 0.75}px;">${category.name.split(' ')[0]}</span>
+                    <h3 style="font-size: ${baseSize * 1.25}px; font-weight: 600; color: ${textColor};">${category.name.split(' ').slice(1).join(' ')}</h3>
+                  </div>
+                  
+                  <p style="font-size: ${baseSize * 0.875}px; color: ${textColor}; opacity: 0.7; margin-bottom: ${baseSize}px;">${category.description}</p>
+                  
+                  <div id="items-${category.id}" style="display: none;">
+                    <div style="border-top: 2px solid ${category.color}; margin: ${baseSize}px 0; padding-top: ${baseSize}px;">
+                      <p style="font-size: ${baseSize * 0.875}px; font-weight: 600; color: ${textColor}; margin-bottom: ${baseSize * 0.75}px;">Examples:</p>
+                      ${category.items.map(item => `
+                        <div class="waste-item" style="background-color: ${backgroundColor}; padding: ${baseSize * 0.5}px ${baseSize * 0.75}px; border-radius: ${baseSize * 0.375}px; margin-bottom: ${baseSize * 0.5}px; font-size: ${baseSize * 0.875}px; color: ${textColor};">
+                          • ${item}
+                        </div>
+                      `).join('')}
+                    </div>
+                  </div>
+                  
+                  <button id="btn-${category.id}" style="margin-top: ${baseSize}px; width: 100%; background-color: ${secondaryAction}; color: white; padding: ${baseSize * 0.625}px; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize * 0.875}px; font-weight: 500; border: none; cursor: pointer; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+                    Show Examples
+                  </button>
+                </div>
+              `).join('')}
+            </div>
+          </section>
+
+          <!-- Map Section -->
+          <section style="max-width: 1200px; margin: 0 auto;">
+            <h2 style="font-size: ${baseSize * 1.875}px; font-weight: 600; color: ${textColor}; margin-bottom: ${baseSize * 1.5}px; text-align: center;">${mapHeading}</h2>
+            
+            <div style="display: grid; grid-template-columns: 1fr; gap: ${baseSize * 1.5}px; margin-bottom: ${baseSize * 2}px;">
+              <div style="background-color: ${surfaceColor}; border-radius: ${baseSize * 0.75}px; padding: ${baseSize * 1.5}px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                <div id="map"></div>
+              </div>
+
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: ${baseSize}px;">
+                ${recyclingCenters.map(center => `
+                  <div class="center-card" data-center-id="${center.id}" style="background-color: ${surfaceColor}; border-radius: ${baseSize * 0.5}px; padding: ${baseSize * 1.25}px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); border: 2px solid transparent;" onclick="selectCenter(${center.id})">
+                    <div style="display: flex; align-items: center; margin-bottom: ${baseSize * 0.75}px;">
+                      <span style="font-size: ${baseSize * 1.5}px; margin-right: ${baseSize * 0.5}px; color: ${center.color};">📍</span>
+                      <h3 style="font-size: ${baseSize}px; font-weight: 600; color: ${textColor}; line-height: 1.3;">${center.name}</h3>
+                    </div>
+                    
+                    <p style="font-size: ${baseSize * 0.75}px; color: ${textColor}; opacity: 0.7; margin-bottom: ${baseSize * 0.5}px;">📍 ${center.address}</p>
+                    
+                    <p id="distance-${center.id}" style="font-size: ${baseSize * 0.75}px; color: ${primaryAction}; font-weight: 600; margin-bottom: ${baseSize * 0.5}px; display: none;"></p>
+                    
+                    <div style="margin-bottom: ${baseSize * 0.75}px;">
+                      <p style="font-size: ${baseSize * 0.75}px; font-weight: 600; color: ${textColor}; margin-bottom: ${baseSize * 0.375}px;">Accepts:</p>
+                      <div style="display: flex; flex-wrap: wrap; gap: ${baseSize * 0.375}px;">
+                        ${(Array.isArray(center.accepts) ? center.accepts : center.accepts.split(', ')).map(item => `
+                          <span style="background-color: ${backgroundColor}; padding: ${baseSize * 0.25}px ${baseSize * 0.5}px; border-radius: ${baseSize * 0.25}px; font-size: ${baseSize * 0.65}px; color: ${textColor};">${item}</span>
+                        `).join('')}
+                      </div>
+                    </div>
+                    
+                    <p style="font-size: ${baseSize * 0.75}px; color: ${textColor}; opacity: 0.7; margin-bottom: ${baseSize * 0.375}px;">🕐 ${center.hours}</p>
+                    <a href="tel:${center.phone}" style="font-size: ${baseSize * 0.75}px; color: ${primaryAction}; font-weight: 500; text-decoration: none; display: block; margin-bottom: ${baseSize * 0.75}px;">📞 ${center.phone}</a>
+                    
+                    <div style="display: flex; gap: ${baseSize * 0.5}px;">
+                      <button onclick="event.stopPropagation(); getDirections(${center.lat}, ${center.lng})" style="flex: 1; background-color: ${primaryAction}; color: white; padding: ${baseSize * 0.625}px; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize * 0.875}px; font-weight: 500; border: none; cursor: pointer; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+                        🗺️ Directions
+                      </button>
+                      ${center.qrCode ? `
+                        <button onclick="event.stopPropagation(); showCenterQRCode(${center.id})" style="flex: 1; background-color: ${secondaryAction}; color: white; padding: ${baseSize * 0.625}px; border-radius: ${baseSize * 0.375}px; font-size: ${baseSize * 0.875}px; font-weight: 500; border: none; cursor: pointer; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">
+                          📱 QR Code
+                        </button>
+                      ` : ''}
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          </section>
+
+          <!-- Footer -->
+          <footer style="text-align: center; margin-top: ${baseSize * 3}px; padding-top: ${baseSize * 2}px; border-top: 2px solid ${surfaceColor};">
+            <p style="font-size: ${baseSize * 0.875}px; color: ${textColor}; opacity: 0.7;">🌍 Together we can make our planet cleaner and greener!</p>
+          </footer>
+        </div>
+      `;
+
+      loadGoogleMapsScript().then(() => {
+        initializeMap();
+      }).catch(error => {
+        console.error('Error loading Google Maps:', error);
+        const mapDiv = document.getElementById('map');
+        if (mapDiv) {
+          mapDiv.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: center; height: 100%; background: #f1f5f9; border-radius: 12px;">
+              <p style="color: #64748b; text-align: center; padding: 20px;">Unable to load map. Please check your connection.</p>
+            </div>
+          `;
+        }
+      });
+
+      updateRewardsDisplay();
+    }
+
+    window.toggleCategory = function(categoryId) {
+      const itemsDiv = document.getElementById(`items-${categoryId}`);
+      const button = document.getElementById(`btn-${categoryId}`);
+      
+      if (itemsDiv.style.display === 'none') {
+        itemsDiv.style.display = 'block';
+        button.textContent = 'Hide Examples';
+        earnPoints('learn_category');
+      } else {
+        itemsDiv.style.display = 'none';
+        button.textContent = 'Show Examples';
+      }
+    };
+
+    window.selectCenter = selectCenter;
+
+    window.getDirections = function(lat, lng) {
+      if (userLocation) {
+        const url = `https://www.google.com/maps/dir/?api=1&origin=${userLocation.lat},${userLocation.lng}&destination=${lat},${lng}`;
+        window.open(url, '_blank', 'noopener,noreferrer');
+      } else {
+        const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    };
+
+    window.earnPoints = earnPoints;
+
+    const dataHandler = {
+      onDataChanged(data) {
+        allData = data;
+        
+        rewardData = data.filter(item => item.submission_type === 'reward_activity');
+        centerSubmissions = data.filter(item => item.submission_type === 'center_suggestion');
+        
+        totalPoints = rewardData.reduce((sum, record) => sum + (record.points || 0), 0);
+        
+        const approvedCenters = centerSubmissions.filter(s => s.center_status === 'approved');
+        const newCenterIds = new Set();
+        
+        recyclingCenters = [...baseRecyclingCenters];
+        
+        approvedCenters.forEach(submission => {
+          const centerId = baseRecyclingCenters.length + parseInt(submission.__backendId.substring(0, 8), 16);
+          
+          if (!newCenterIds.has(centerId)) {
+            newCenterIds.add(centerId);
+            
+            const acceptsArray = submission.center_accepts.split(',').map(s => s.trim());
+            
+            recyclingCenters.push({
+              id: centerId,
+              name: submission.center_name,
+              lat: submission.center_lat,
+              lng: submission.center_lng,
+              accepts: acceptsArray,
+              hours: submission.center_hours,
+              phone: submission.center_phone,
+              address: submission.center_address,
+              color: '#8b5cf6',
+              qrCode: ''
+            });
+          }
+        });
+        
+        updateRewardsDisplay();
+        
+        if (map && markers.length > 0) {
+          loadGoogleMapsScript().then(() => {
+            initializeMap();
+          });
+        }
+        
+        if (isAdminMode) {
+          render();
+        }
+      }
+    };
+
+    const element = {
+      defaultConfig,
+      onConfigChange: async (config) => {
+        render();
+      },
+      mapToCapabilities: (config) => ({
+        recolorables: [
+          {
+            get: () => config.background_color || defaultConfig.background_color,
+            set: (value) => {
+              config.background_color = value;
+              window.elementSdk.setConfig({ background_color: value });
+            }
+          },
+          {
+            get: () => config.surface_color || defaultConfig.surface_color,
+            set: (value) => {
+              config.surface_color = value;
+              window.elementSdk.setConfig({ surface_color: value });
+            }
+          },
+          {
+            get: () => config.text_color || defaultConfig.text_color,
+            set: (value) => {
+              config.text_color = value;
+              window.elementSdk.setConfig({ text_color: value });
+            }
+          },
+          {
+            get: () => config.primary_action || defaultConfig.primary_action,
+            set: (value) => {
+              config.primary_action = value;
+              window.elementSdk.setConfig({ primary_action: value });
+            }
+          },
+          {
+            get: () => config.secondary_action || defaultConfig.secondary_action,
+            set: (value) => {
+              config.secondary_action = value;
+              window.elementSdk.setConfig({ secondary_action: value });
+            }
+          }
+        ],
+        borderables: [],
+        fontEditable: {
+          get: () => config.font_family || defaultConfig.font_family,
+          set: (value) => {
+            config.font_family = value;
+            window.elementSdk.setConfig({ font_family: value });
+          }
+        },
+        fontSizeable: {
+          get: () => config.font_size || defaultConfig.font_size,
+          set: (value) => {
+            config.font_size = value;
+            window.elementSdk.setConfig({ font_size: value });
+          }
+        }
+      }),
+      mapToEditPanelValues: (config) => new Map([
+        ['app_title', config.app_title || defaultConfig.app_title],
+        ['tagline', config.tagline || defaultConfig.tagline],
+        ['learn_heading', config.learn_heading || defaultConfig.learn_heading],
+        ['map_heading', config.map_heading || defaultConfig.map_heading],
+        ['rewards_heading', config.rewards_heading || defaultConfig.rewards_heading],
+        ['admin_password', config.admin_password || defaultConfig.admin_password]
+      ])
+    };
+
+    async function initializeApp() {
+      if (window.dataSdk) {
+        const initResult = await window.dataSdk.init(dataHandler);
+        if (!initResult.isOk) {
+          console.error('Failed to initialize Data SDK');
+        }
+      }
+
+      if (window.elementSdk) {
+        window.elementSdk.init(element);
+      }
+      
+      render();
+    }
+
+    initializeApp();
+  </script>
+ <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9b289e36418a3989',t:'MTc2NjUwMDg2OC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
